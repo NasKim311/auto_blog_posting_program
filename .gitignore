@@ -1,0 +1,5 @@
+node_modules/
+temp_images/
+logs/
+.env
+post_history.json
