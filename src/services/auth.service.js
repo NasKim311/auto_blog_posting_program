@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const CONFIG = require('../config/config');
 
 class AuthService {
     // 네이버 로그인 함수

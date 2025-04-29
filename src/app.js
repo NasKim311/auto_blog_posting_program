@@ -1,15 +1,15 @@
 const puppeteer = require('puppeteer');
-const authService = require('./services/authService');
-const blogService = require('./services/blogService');
-const contentService = require('./services/contentService');
-const historyUtils = require('./utils/historyUtils');
-const config = require('./config/config');
+const authService = require('./services/auth.service');
+const blogService = require('./services/blog.service');
+const contentService = require('./services/content.service');
+const historyUtil = require('./utils/history.util');
+const CONFIG = require('./config/config');
 
 // 포스팅 사이클 실행 함수
 async function runPostingCycle(browser) {
     try {
         // 오늘 포스팅 수 확인
-        const todayPostCount = getTodayPostCount();
+        const todayPostCount = historyUtil.getTodayPostCount();
         console.log(`오늘 작성된 포스트 수: ${todayPostCount}/${CONFIG.maxPostsPerDay}`);
 
         if (todayPostCount >= CONFIG.maxPostsPerDay) {
@@ -18,10 +18,10 @@ async function runPostingCycle(browser) {
         }
 
         // 컨텐츠 수집
-        const contents = await collectContent();
+        const contents = await contentService.collectContent();
 
         // 중복되지 않은 컨텐츠만 필터링
-        const uniqueContents = contents.filter((item) => !isDuplicatePost(item.title));
+        const uniqueContents = contents.filter((item) => !historyUtil.isDuplicatePost(item.title));
         console.log(`중복 제외 ${uniqueContents.length}개의 컨텐츠 항목 남음`);
 
         if (uniqueContents.length === 0) {
@@ -33,11 +33,11 @@ async function runPostingCycle(browser) {
         const contentToPost = uniqueContents[0];
 
         // 블로그 포스팅
-        const postSuccess = await createBlogPost(browser, contentToPost);
+        const postSuccess = await blogService.createBlogPost(browser, contentToPost);
 
         if (postSuccess) {
             // 포스팅 기록 저장
-            savePostHistory(contentToPost);
+            historyUtil.savePostHistory(contentToPost);
         }
     } catch (error) {
         console.error('포스팅 사이클 실행 중 오류:', error);
@@ -57,7 +57,7 @@ async function main() {
 
     try {
         // 네이버 로그인
-        const loginSuccess = await naverLogin(browser);
+        const loginSuccess = await authService.naverLogin(browser);
         if (!loginSuccess) {
             throw new Error('로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.');
         }
