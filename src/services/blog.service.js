@@ -1,5 +1,5 @@
 const fs = require('fs');
-const path = require('path');
+const CONFIG = require('../config/config');
 
 class BlogService {
     // 블로그 포스팅 함수
@@ -9,72 +9,81 @@ class BlogService {
 
         // 포스트 작성 페이지로 이동
         await page.goto(CONFIG.writePostURL);
-        await page.waitForSelector('#title');
 
-        // 제목 입력
-        await page.type('#title', contentItem.title);
+        // 새로운 에디터 로딩 대기
+        await page.waitForSelector('.se-container');
 
-        // 카테고리 선택
-        await page.select('#categoryTitle', contentItem.category);
+        // 제목 입력 (새로운 셀렉터)
+        await page.waitForSelector('.se-title-text');
+        await page.click('.se-title-text');
+        await page.keyboard.type(contentItem.title);
 
-        // 이미지 다운로드 및 업로드
-        const imagePaths = await downloadImages(contentItem.images);
+        // 본문 영역 클릭
+        await page.waitForSelector('.se-component-content');
+        await page.click('.se-component-content');
 
-        // 각 이미지 업로드
-        for (const imagePath of imagePaths) {
-            await page.waitForSelector('input[type="file"]');
-            const fileInput = await page.$('input[type="file"]');
-            await fileInput.uploadFile(imagePath);
-            await page.waitForTimeout(2000); // 이미지 업로드 대기
+        // 이미지 업로드 (새로운 방식)
+        if (contentItem.images && contentItem.images.length > 0) {
+            for (const imagePath of contentItem.images) {
+                // 이미지 업로드 버튼 클릭
+                await page.waitForSelector('.se-toolbar-item-image');
+                await page.click('.se-toolbar-item-image');
+
+                // 파일 선택 input 대기 및 업로드
+                const [fileChooser] = await Promise.all([page.waitForFileChooser(), page.click('.se-image-file-input')]);
+                await fileChooser.accept([imagePath]);
+
+                // 이미지 업로드 완료 대기
+                await page.waitForSelector('.se-image-container img');
+                await page.waitForTimeout(1000);
+            }
         }
 
-        // 에디터에 컨텐츠 입력 (에디터 타입에 따라 다를 수 있음)
-        // 스마트 에디터의 경우
+        // 본문 내용 입력
         await page.evaluate((content) => {
-            // iframe 내의 에디터에 접근
-            const editorFrame = document.querySelector('#se2_iframe');
-            const editorDocument = editorFrame.contentDocument || editorFrame.contentWindow.document;
-            const editorBody = editorDocument.querySelector('body');
-            editorBody.innerHTML = content;
+            const contentArea = document.querySelector('.se-component-content');
+            if (contentArea) {
+                // HTML 내용을 텍스트로 변환하여 입력
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                contentArea.textContent = tempDiv.textContent;
+            }
         }, contentItem.content);
 
         // 출처 표시 추가
-        await page.evaluate((source) => {
-            const editorFrame = document.querySelector('#se2_iframe');
-            const editorDocument = editorFrame.contentDocument || editorFrame.contentWindow.document;
-            const editorBody = editorDocument.querySelector('body');
+        await page.keyboard.press('Enter');
+        await page.keyboard.type(`\n출처: ${contentItem.source}`);
 
-            const sourceDiv = editorDocument.createElement('div');
-            sourceDiv.style.marginTop = '30px';
-            sourceDiv.style.borderTop = '1px solid #eee';
-            sourceDiv.style.paddingTop = '10px';
-            sourceDiv.style.color = '#888';
-            sourceDiv.innerHTML = `<p>출처: ${source}</p>`;
+        // 카테고리 선택
+        await page.waitForSelector('.category-select-button');
+        await page.click('.category-select-button');
+        await page.waitForSelector('.category-item');
 
-            editorBody.appendChild(sourceDiv);
-        }, contentItem.source);
+        // 카테고리 목록에서 해당하는 카테고리 찾아 클릭
+        await page.evaluate((category) => {
+            const categoryItems = Array.from(document.querySelectorAll('.category-item'));
+            const targetCategory = categoryItems.find((item) => item.textContent.includes(category));
+            if (targetCategory) targetCategory.click();
+        }, contentItem.category);
 
         // 발행 버튼 클릭
-        await page.click('#btn_submit');
+        await page.waitForSelector('.publish-button');
+        await page.click('.publish-button');
 
         // 발행 확인 모달이 있는 경우
         try {
-            await page.waitForSelector('.confirm_btn', { timeout: 5000 });
-            await page.click('.confirm_btn');
+            await page.waitForSelector('.confirm-button', { timeout: 5000 });
+            await page.click('.confirm-button');
         } catch (e) {
-            // 모달이 없으면 무시
+            console.log('확인 모달이 없습니다.');
         }
 
+        // 발행 완료 대기
+        await page.waitForSelector('.publish-complete', { timeout: 30000 });
         console.log(`포스트 작성 완료: ${contentItem.title}`);
 
-        // 임시 이미지 파일 삭제
-        for (const imagePath of imagePaths) {
-            try {
-                fs.unlinkSync(imagePath);
-            } catch (error) {
-                console.error(`이미지 파일 삭제 실패: ${imagePath}`, error.message);
-            }
-        }
+        // 페이지 닫기
+        await page.close();
 
         return true;
     }
