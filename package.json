@@ -4,6 +4,7 @@
     "private": true,
     "scripts": {
         "start": "node src/app.js",
+        "test": "node src/test.js",
         "format": "prettier --check .",
         "format:fix": "prettier --write ."
     },
